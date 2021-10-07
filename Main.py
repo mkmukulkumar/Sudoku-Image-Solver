@@ -1,9 +1,48 @@
 import cv2
 import numpy as np
 import os
-from PIL import Image 
-import PIL 
+
 knn=cv2.ml.KNearest_create()
+
+def printing(arr):
+    for i in range(9):
+        for j in range(9):
+            print(arr[i][j], end = " ")
+        print()
+ 
+def isSafe(grid, row, col, num):
+    for x in range(9):
+        if grid[row][x] == num:
+            return False
+    for x in range(9):
+        if grid[x][col] == num:
+            return False
+    startRow = row - row % 3
+    startCol = col - col % 3
+    for i in range(3):
+        for j in range(3):
+            if grid[i + startRow][j + startCol] == num:
+                return False
+    return True
+ 
+def solveSuduko(grid, row, col):
+    if (row == 9 - 1 and col == 9):
+        return True
+    if col == 9:
+        row += 1
+        col = 0
+    if grid[row][col] > 0:
+        return solveSuduko(grid, row, col + 1)
+    for num in range(1, 9 + 1, 1):
+        if isSafe(grid, row, col, num):
+            grid[row][col] = num
+            if solveSuduko(grid, row, col + 1):
+                return True
+        grid[row][col] = 0
+    return False
+ 
+
+
 def traindata():
     path='TrainingData'
     myList=os.listdir(path)
@@ -25,7 +64,7 @@ def traindata():
     #kNN train
     knn.train(images,cv2.ml.ROW_SAMPLE,classNo)
 
-def test(boxes):
+def ocr(boxes):
     boxes=np.array(boxes,dtype=np.float32)
     ret, result, neighbours, dist=knn.findNearest(boxes,k=3)
     return result
@@ -71,42 +110,48 @@ def splitboxes(img):
         cells=np.hsplit(r,9)
         for c in cells:
             c=cv2.resize(c,(40,40))
-            c=cv2.blur(c,(5,5))
+            contours,hierarchy=cv2.findContours(c,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(c,contours,-1,(255,255,255),10)
             c=c.flatten()
             boxes.append(c)
     return boxes        
 
+# Driver Code
+if __name__=="__main__":
+    img=cv2.imread('1.jpg')
+    img=cv2.resize(img,(450,450))
 
-img=cv2.imread('1.jpg')
-img=cv2.resize(img,(450,450))
+    #preprocess the image
+    img=prepocess(img)
+    #find all outer contours
+    contours,hierarchy=cv2.findContours(img,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+    #find biggest contour
+    biggest,maxArea=biggestcontour(contours)
+    #rearrange the points
+    biggest=findpoints(biggest)
+    #two points found for perspective transformation
+    pts1=np.float32(biggest)
+    pts2=np.float32([[0,0],[450,0],[0,450],[450,450]])
+    #perspective transformed
+    matrix=cv2.getPerspectiveTransform(pts1,pts2)
+    img=cv2.warpPerspective(img,matrix,(450,450))
+    img2=img.copy()
+    #splitting image
+    boxes=splitboxes(img)
+    #training model
+    traindata()
+    #ocr
+    characters=ocr(boxes)
+    temp=[]
+    for i in range(0,81):
+        temp.append(int(characters[i]))
+    grid=np.reshape(temp, (9,9))
 
-#preprocess the image
-img=prepocess(img)
-#find all outer contours
-contours,hierarchy=cv2.findContours(img,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
-#find biggest contour
-biggest,maxArea=biggestcontour(contours)
-#rearrange the points
-biggest=findpoints(biggest)
-#two points found for perspective transformation
-pts1=np.float32(biggest)
-pts2=np.float32([[0,0],[450,0],[0,450],[450,450]])
-#perspective transformed
-matrix=cv2.getPerspectiveTransform(pts1,pts2)
-img=cv2.warpPerspective(img,matrix,(450,450))
-img2=img.copy()
-#splitting image
-boxes=splitboxes(img)
-
-
-traindata()
-characters=test(boxes)
-for i in range(1,len(boxes)+1):
-    if(i%9==0):
-        print(characters[i-1],end="\n")
+    if (solveSuduko(grid, 0, 0)):
+        printing(grid)
     else:
-        print(characters[i-1],end=" ")
+        print("no solution  exists ")
 
-cv2.imshow('img',img)
-cv2.waitKey(0)
-cv2.destroyAllWindows
+
+
+    
